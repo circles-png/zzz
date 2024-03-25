@@ -16,24 +16,30 @@ fn main() {
     // match the command
     match cli.command {
         Commands::Now => {
+            // check if the file exists
             if !Path::new(TIME_PATH).exists() {
                 eprintln!("Time not set");
                 return;
             }
+            // parse the time from the file
             let date_time = NaiveDateTime::parse_from_str(
                 read_to_string(TIME_PATH).unwrap().trim(),
                 "%Y-%m-%d %H:%M:%S%.f",
             )
                 .unwrap();
+            // get the current time
             let now = Local::now().naive_local();
+            // calculate the remaining time
             let remaining = format_duration(date_time.signed_duration_since(now).to_std().unwrap());
             println!("Remaining sleep: {remaining}");
         }
         Commands::Time { time } => {
+            // parse the time
             let Ok(time) = NaiveTime::parse_from_str(&time, "%H:%M:%S") else {
                 eprintln!("Invalid time format (expected 24-hour HH:MM:SS)");
                 return;
             };
+            // set the time to tomorrow
             let date_time = NaiveDateTime::new(
                 Local::now()
                     .naive_local()
@@ -42,6 +48,7 @@ fn main() {
                     .date(),
                 time,
             );
+            // write the time to the file
             File::create(TIME_PATH)
                 .unwrap()
                 .write_all(date_time.to_string().as_bytes())
@@ -49,6 +56,7 @@ fn main() {
             println!("Time set to {time} tomorrow");
         }
         Commands::Sleep => {
+            // print the lullaby
             println!(include_str!("lullaby"));
         }
     }
