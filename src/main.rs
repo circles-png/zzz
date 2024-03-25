@@ -1,14 +1,15 @@
-#![warn(clippy::pedantic, clippy::nursery)]
+#![warn(clippy::pedantic, clippy::nursery, clippy::unwrap_used)]
+use anyhow::{anyhow, Result};
 use humantime::format_duration;
 use std::{
-    fs::{read_to_string, File},
-    io::Write, path::Path,
+    fs::{read_to_string, remove_file, File},
+    io::Write,
 };
 
 use chrono::{Days, Local, NaiveDateTime, NaiveTime};
 use clap::{Parser, Subcommand};
 
-fn main() {
+fn main() -> Result<()> {
     // path to file that stores the wake-up time
     const TIME_PATH: &str = "time";
     // parse the cli with std::env::args through clap
@@ -16,42 +17,59 @@ fn main() {
     // match the command
     match cli.command {
         Commands::Now => {
-            if !Path::new(TIME_PATH).exists() {
-                eprintln!("Time not set");
-                return;
-            }
+            // parse the time from the file
             let date_time = NaiveDateTime::parse_from_str(
-                read_to_string(TIME_PATH).unwrap().trim(),
+                read_to_string(TIME_PATH)
+                    .map_err(|_| {
+                        anyhow!("Time not set or invalid data. Use `zzz time` to set the time.")
+                    })?
+                    .trim(),
                 "%Y-%m-%d %H:%M:%S%.f",
             )
-                .unwrap();
+            .map_err(|_| {
+                anyhow!("Invalid time format in time file. Use `zzz time` to set the time.")
+            })?;
+            // get the current time
             let now = Local::now().naive_local();
-            let remaining = format_duration(date_time.signed_duration_since(now).to_std().unwrap());
+            // calculate the remaining time
+            let Ok(remaining) = date_time.signed_duration_since(now).to_std() else {
+                println!("Current time is after the set time, deleting the time file.");
+                remove_file(TIME_PATH).map_err(|_| {
+                    anyhow!("Failed to delete the time file. Please delete it manually.")
+                })?;
+                return Ok(());
+            };
+            let remaining = format_duration(remaining);
             println!("Remaining sleep: {remaining}");
         }
         Commands::Time { time } => {
-            let Ok(time) = NaiveTime::parse_from_str(&time, "%H:%M:%S") else {
-                eprintln!("Invalid time format (expected 24-hour HH:MM:SS)");
-                return;
-            };
+            // parse the time
+            let time = NaiveTime::parse_from_str(&time, "%H:%M:%S")
+                .map_err(|_| anyhow!("Invalid time format (expected 24-hour HH:MM:SS)"))?;
+            // set the time to tomorrow
             let date_time = NaiveDateTime::new(
                 Local::now()
                     .naive_local()
                     .checked_add_days(Days::new(1))
-                    .unwrap()
+                    .ok_or_else(|| {
+                        anyhow!("Failed to calculate tomorrow's date because it is out of range.")
+                    })?
                     .date(),
                 time,
             );
+            // write the time to the file
             File::create(TIME_PATH)
-                .unwrap()
+                .map_err(|_| anyhow!("Failed to create the time file"))?
                 .write_all(date_time.to_string().as_bytes())
-                .unwrap();
+                .map_err(|_| anyhow!("Failed to write to the time file"))?;
             println!("Time set to {time} tomorrow");
         }
         Commands::Sleep => {
+            // print the lullaby
             println!(include_str!("lullaby"));
         }
     }
+    Ok(())
 }
 
 #[derive(Parser)]
