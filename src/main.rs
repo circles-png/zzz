@@ -1,6 +1,8 @@
 #![warn(clippy::pedantic, clippy::nursery, clippy::unwrap_used)]
 use anyhow::{anyhow, Result};
+use colored::{Color, Colorize};
 use humantime::format_duration;
+use rand::{seq::SliceRandom, thread_rng};
 use std::{
     fs::{read_to_string, remove_file, File},
     io::Write,
@@ -17,18 +19,15 @@ fn main() -> Result<()> {
     // match the command
     match cli.command {
         Commands::Now => {
-            // parse the time from the file
-            let date_time = NaiveDateTime::parse_from_str(
-                read_to_string(TIME_PATH)
-                    .map_err(|_| {
-                        anyhow!("Time not set or invalid data. Use `zzz time` to set the time.")
-                    })?
-                    .trim(),
-                "%Y-%m-%d %H:%M:%S%.f",
-            )
-            .map_err(|_| {
-                anyhow!("Invalid time format in time file. Use `zzz time` to set the time.")
+            let string = &read_to_string(TIME_PATH).map_err(|_| {
+                anyhow!("Time not set or invalid data. Use `zzz time` to set the time.")
             })?;
+            let string = string.trim();
+            // parse the time from the file
+            let date_time =
+                NaiveDateTime::parse_from_str(string, "%Y-%m-%d %H:%M:%S%.f").map_err(|_| {
+                    anyhow!("Invalid time format in time file. Use `zzz time` to set the time.")
+                })?;
             // get the current time
             let now = Local::now().naive_local();
             // calculate the remaining time
@@ -40,7 +39,11 @@ fn main() -> Result<()> {
                 return Ok(());
             };
             let remaining = format_duration(remaining);
-            println!("Remaining sleep: {remaining}");
+            println!(
+                "{} {remaining}\n              {} {string}",
+                "Remaining sleep:".dimmed(),
+                "to".dimmed(),
+            );
         }
         Commands::Time { time } => {
             // parse the time
@@ -62,16 +65,36 @@ fn main() -> Result<()> {
                 .map_err(|_| anyhow!("Failed to create the time file"))?
                 .write_all(date_time.to_string().as_bytes())
                 .map_err(|_| anyhow!("Failed to write to the time file"))?;
-            println!("Time set to {time} tomorrow");
+            println!(
+                "{} {} {}",
+                "Time set to".dimmed(),
+                time,
+                "tomorrow.".dimmed()
+            );
         }
         Commands::Sleep => {
             // print the lullaby
-            println!(include_str!("lullaby"));
+            for line in include_str!("lullaby").lines() {
+                let colour = unsafe {
+                    [
+                        Color::BrightRed,
+                        Color::BrightGreen,
+                        Color::BrightYellow,
+                        Color::BrightBlue,
+                        Color::BrightMagenta,
+                        Color::BrightCyan,
+                    ]
+                    .choose(&mut thread_rng())
+                    .unwrap_unchecked()
+                };
+                println!("{}", line.color(*colour));
+            }
         }
     }
     Ok(())
 }
 
+/// The sleep counter for night owls
 #[derive(Parser)]
 struct Cli {
     #[command(subcommand)]
