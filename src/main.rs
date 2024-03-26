@@ -24,33 +24,12 @@ fn main() -> Result<()> {
             })?;
             let string = string.trim();
             // parse the time from the file
-            let date_time =
-                NaiveDateTime::parse_from_str(string, "%Y-%m-%d %H:%M:%S%.f").map_err(|_| {
+            let time =
+                NaiveTime::parse_from_str(string, "%H:%M:%S%.f").map_err(|_| {
                     anyhow!("Invalid time format in time file. Use `zzz time` to set the time.")
                 })?;
-            // get the current time
-            let now = Local::now().naive_local();
-            // calculate the remaining time
-            let Ok(remaining) = date_time.signed_duration_since(now).to_std() else {
-                println!("Current time is after the set time, deleting the time file.");
-                remove_file(TIME_PATH).map_err(|_| {
-                    anyhow!("Failed to delete the time file. Please delete it manually.")
-                })?;
-                return Ok(());
-            };
-            let remaining = format_duration(remaining);
-            println!(
-                "{} {remaining}\n              {} {string}",
-                "Remaining sleep:".dimmed(),
-                "to".dimmed(),
-            );
-        }
-        Commands::Time { time } => {
-            // parse the time
-            let time = NaiveTime::parse_from_str(&time, "%H:%M:%S")
-                .map_err(|_| anyhow!("Invalid time format (expected 24-hour HH:MM:SS)"))?;
-            // set the time to tomorrow
-            let date_time = NaiveDateTime::new(
+            // get tomorrow's date
+            let tomorrow = NaiveDateTime::new(
                 Local::now()
                     .naive_local()
                     .checked_add_days(Days::new(1))
@@ -60,16 +39,37 @@ fn main() -> Result<()> {
                     .date(),
                 time,
             );
+            // get the current time
+            let now = Local::now().naive_local();
+            // calculate the remaining time
+            let Ok(remaining) = tomorrow.signed_duration_since(now).to_std() else {
+                println!("Current time is after the set time, deleting the time file.");
+                remove_file(TIME_PATH).map_err(|_| {
+                    anyhow!("Failed to delete the time file. Please delete it manually.")
+                })?;
+                return Ok(());
+            };
+            let remaining = format_duration(remaining);
+            println!(
+                "{remaining} {}\n{} {string}",
+                "of sleep time".dimmed(),
+                "to".dimmed(),
+            );
+        }
+        Commands::Time { time } => {
+            // parse the time
+            let time = NaiveTime::parse_from_str(&time, "%H:%M:%S")
+                .map_err(|_| anyhow!("Invalid time format (expected 24-hour HH:MM:SS)"))?;
             // write the time to the file
             File::create(TIME_PATH)
                 .map_err(|_| anyhow!("Failed to create the time file"))?
-                .write_all(date_time.to_string().as_bytes())
+                .write_all(time.to_string().as_bytes())
                 .map_err(|_| anyhow!("Failed to write to the time file"))?;
             println!(
-                "{} {} {}",
-                "Time set to".dimmed(),
+                "{} {}{}",
+                "Sleep time set to".dimmed(),
                 time,
-                "tomorrow.".dimmed()
+                ", good night.".dimmed()
             );
         }
         Commands::Sleep => {
